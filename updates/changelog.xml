@@ -76,4 +76,13 @@
 			<item>Added Tagalog (Philippines) language support for widget</item>
 		</addition>
 	</changelog>
+	<changelog>
+		<element>turnstile</element>
+		<type>plugin</type>
+		<version>1.5.2</version>
+		<change>
+			<item>Declared Joomla! 6.0 compatibility</item>
+			<item>Declared PHP 8.5 compatibility</item>
+		</change>
+	</changelog>
 </changelogs>
