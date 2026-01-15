@@ -10,7 +10,7 @@ use Joomla\CMS\Http\HttpFactory;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Utilities\ArrayHelper;
-
+use Joomla\CMS\Factory;
 /**
  * Cloudflare Turnstile captcha plugin.
  *
@@ -216,71 +216,40 @@ final class PlgCaptchaTurnstile extends CMSPlugin
 		$language = $this->app->getLanguage();
 		$language->load('plg_captcha_turnstile', JPATH_ADMINISTRATOR);
 
-		if ($code === null || $code === '')
-		{
-			// No answer provided, form was manipulated.
-			throw new RuntimeException($language->_('PLG_CAPTCHA_TURNSTILE_ERROR_EMPTY'));
-		}
+        $input = Factory::getApplication()->input;
 
-		try
-		{
+        // 1️⃣ Joomla standard
+        $token = is_string($code) && $code !== '' ? $code : null;
+    
+        // 2️⃣ Turnstile standard
+        if (!$token) {
+            $token = $input->post->getString('cf-turnstile-response');
+        }
+    
+        if (!$token) {
+            return false;
+        }
+    
+		
+		try {
 			$http = HttpFactory::getHttp();
-		}
-		// No HTTP transports supported.
-		catch (Exception $exception)
-		{
-			if ($this->params->get('strictMode'))
-			{
-				throw new RuntimeException($language->_('PLG_CAPTCHA_TURNSTILE_ERROR_HTTP_TRANSPORTS'));
-			}
-
-			return true;
-		}
-
-		$data = array(
-			'response' => $code,
-			'secret' => $this->params->get('secret'),
-		);
-
-		try
-		{
-			$response = $http->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', $data);
-			$body = json_decode($response->body);
-		}
-		// Connection or transport error.
-		catch (RuntimeException $exception)
-		{
-			if ($this->params->get('strictMode'))
-			{
-				throw new RuntimeException('PLG_CAPTCHA_TURNSTILE_ERROR_HTTP_CONNECTION');
-			}
-
-			return true;
-		}
-
-		// Remote service error.
-		if ($body === null)
-		{
-			if ($this->params->get('strictMode'))
-			{
-				throw new RuntimeException($language->_('PLG_CAPTCHA_TURNSTILE_ERROR_INVALID_RESPONSE'));
-			}
-
-			return true;
-		}
-
-		if (!isset($body->success) || $body->success !== true)
-		{
-			// If error codes are pvovided, use them for language strings.
-			if (!empty($body->{'error-codes'}) && is_array($body->{'error-codes'}))
-			{
-				if ($errors = array_intersect($body->{'error-codes'}, self::$errorCodes))
-				{
-					throw new RuntimeException($language->_('PLG_CAPTCHA_TURNSTILE_ERROR_' . strtoupper(str_replace('-', '_', reset($errors)))));
-				}
-			}
-
-			throw new RuntimeException($language->_('PLG_CAPTCHA_TURNSTILE_ERROR_VERIFICATION_FAILED'));
+			$response = $http->post(
+				'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+				[
+					'secret'   => trim($this->params->get('secret')),
+					'response' => $token,
+					'remoteip' => $_SERVER['REMOTE_ADDR'] ?? null,
+				],
+				[],
+				10
+			);
+			
+			$result = json_decode($response->body ?? '', true);
+			
+			return isset($result['success']) && $result['success'] === true;
+		
+		} catch (\Throwable $e) {
+			return false;
 		}
 
 		return true;
